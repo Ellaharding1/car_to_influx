@@ -1,5 +1,6 @@
 import datetime
 import random
+from influxdb_client import InfluxDBClient, Point
 
 # Define GNSS data structure
 class GNSSData:
@@ -31,19 +32,53 @@ def simulate_gnss_data():
 
     return gnss_data
 
-# Parse GNSS data into InfluxDB format
-def parse_gnss_to_influx(gnss_data):
-    influx_format = f"location,device_id= device123 latency={gnss_data.latitude},longitude={gnss_data.longitude},speed={gnss_data.speed},course={gnss_data.course},fix_status=1,mode={gnss_data.mode} 1039477200000000000"
-    return influx_format
+# Write GNSS data to InfluxDB
+def write_gnss_to_influx(gnss_data, write_api, bucket, org):
+    # Create a point for InfluxDB
+    point = (
+        Point("location")
+        .tag("device_id", "device123")
+        .field("latitude", gnss_data.latitude)
+        .field("longitude", gnss_data.longitude)
+        .field("speed", gnss_data.speed)
+        .field("course", gnss_data.course)
+        .field("fix_status", 1)  # Assuming fix_status is always 1
+        .field("mode", gnss_data.mode)
+        .time(datetime.datetime.utcnow())
+    )
+    # Write the point to InfluxDB
+    write_api.write(bucket=bucket, org=org, record=point)
 
-# Simulate GNSS data and parse it into InfluxDB format
+# Main function
 def main():
-    gnss_data = simulate_gnss_data()
-    influx_format = parse_gnss_to_influx(gnss_data)
-    print(influx_format)
+    # Read the InfluxDB token from the file
+    with open('influx_token.txt', 'r') as f:
+        token = f.read().strip()
+
+    # InfluxDB configuration
+    influx_url = "https://us-east-1-1.aws.cloud2.influxdata.com" 
+    bucket = "canBus"  
+    org = "formulaOne" 
+
+    # Initialize the InfluxDB client
+    client = InfluxDBClient(url=influx_url, token=token, org=org)
+    write_api = client.write_api()
+
+    try:
+        # Simulate GNSS data
+        gnss_data = simulate_gnss_data()
+
+        # Write GNSS data to InfluxDB
+        write_gnss_to_influx(gnss_data, write_api, bucket, org)
+
+        print("GNSS data written to InfluxDB!")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # Ensure the client is closed properly
+        write_api.__del__()  # Cleanly shutdown the write API
+        client.close()
+
 
 if __name__ == "__main__":
     main()
-
-# Output:
-# location,device_id= device123 latency=47.28524,longitude=8.56525,speed=0.004,course=77.52,fix_status=1,mode=A 1039477200000000000
